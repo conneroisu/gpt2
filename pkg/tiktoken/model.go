@@ -1,4 +1,4 @@
-package gpt2
+package tiktoken
 
 // import numpy as np
 // import tensorflow as tf
