@@ -2,11 +2,14 @@
 package cmd
 
 import (
+	"fmt"
 	"math/rand"
 	"os"
 
 	"github.com/charmbracelet/log"
 	"github.com/spf13/cobra"
+	"your_project/pkg/model"
+	"your_project/pkg/tiktoken"
 )
 
 type rootArgs struct {
@@ -19,6 +22,7 @@ type rootArgs struct {
 	temperature   float64
 	topK          int
 	seed          int
+	modelPath     string
 }
 
 // RootArgs is the root command arguments.
@@ -52,13 +56,21 @@ Allows you to interact with the GPT-2 language model.
 			IntVarP(&RootArgs.topK, "top-k", "k", 0, "Top-k sampling")
 		cmd.PersistentFlags().
 			IntVarP(&RootArgs.seed, "seed", "s", rand.Intn(2147483647), "Seed for random number generator")
+		cmd.PersistentFlags().
+			StringVarP(&RootArgs.modelPath, "model-path", "m", "model.gob", "Path to the model file")
 		log.SetLevel(log.DebugLevel)
 		return nil
 	},
 	Run: func(cmd *cobra.Command, args []string) {
-		print(args)
-		cmd.SetOut(os.Stdout)
-		cmd.SetErr(os.Stderr)
+		// Load the model
+		model, err := model.LoadModel(RootArgs.modelPath)
+		if err != nil {
+			log.Fatalf("Failed to load model: %v", err)
+		}
+
+		// Generate text
+		generatedText := model.GenerateText(model, RootArgs.text, RootArgs.length, RootArgs.temperature)
+		fmt.Println(generatedText)
 	},
 }
 
