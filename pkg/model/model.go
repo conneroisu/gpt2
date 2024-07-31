@@ -2,7 +2,12 @@ package model
 
 import (
 	"gonum.org/v1/gonum/mat"
+	"encoding/gob"
 )
+
+func init() {
+	gob.Register(&mat.Dense{})
+}
 
 // Config structure.
 type Config struct {
@@ -47,19 +52,15 @@ func (g *GPT2Model) Forward(
 	past []*mat.Dense,
 ) (*mat.Dense, [][]*mat.Dense) {
 	inputShapeX, _ := inputIDs.Dims()
-
 	// Initialize embedding matrices
 	inputsEmbeds := mat.NewDense(inputShapeX, g.NEmb, nil)
 	inputsEmbeds.Product(inputIDs, g.Wte)
-
 	// Add input embeddings and position embeddings.
 	positionEmbeds := mat.NewDense(inputShapeX, g.NEmb, nil)
 	positionEmbeds.Product(positionIDs, g.Wpe)
-
 	// Add input embeddings and position embeddings
 	hiddenStates := mat.NewDense(inputShapeX, g.NEmb, nil)
 	hiddenStates.Add(inputsEmbeds, positionEmbeds)
-
 	// Initialize presents for each block
 	presents := make([][]*mat.Dense, len(g.H))
 	for i, block := range g.H {
@@ -67,9 +68,8 @@ func (g *GPT2Model) Forward(
 		hiddenStates, present = block.Forward(hiddenStates, past)
 		presents[i] = present
 	}
-
 	// Layer normalization on the final hidden states
 	hiddenStates = g.LnF.Forward(hiddenStates)
-
 	return hiddenStates, presents
 }
+
