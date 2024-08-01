@@ -1,0 +1,94 @@
+package tiktoken
+
+import (
+	"fmt"
+	"slices"
+
+	"github.com/dlclark/regexp2"
+	"gonum.org/v1/gonum/mat"
+)
+
+const debugEncode = false
+
+// CL100KBaseSplitPattern is the splitting pattern (regexp) used by tiktoken
+// with the cl100k_base vocabulary for GPT 4.
+const CL100KBaseSplitPattern = `(?i:'s|'t|'re|'ve|'m|'ll|'d)|[^\r\n\p{L}\p{N}]?\p{L}+|\p{N}{1,3}| ?[^\s\p{L}\p{N}]+[\r\n]*|\s*[\r\n]+|\s+(?!\S)|\s+`
+
+// Encode runs a trained BPE tokenizer over the given text. vocab is the learned
+// map of tokens (mapping token strings to their numeric IDs). splitPattern is
+// the regexp pattern to use for the initial splitting of text to words. Returns
+// a list of tokens representing the text.
+// Note: expects all tokens in text - including any single byte value - to
+// appear in vocab; if an unknown token is found, this function panics.
+func Encode(text string, vocab map[string]int, splitPattern string) *mat.Dense {
+	// Split the input into words using the given splitPattern.
+	// Each word is split further into a list of single bytes.
+	var words [][]string
+	re := regexp2.MustCompile(splitPattern, regexp2.None)
+	m, _ := re.FindStringMatch(text)
+	for m != nil {
+		var word []string
+		for i := 0; i < len(m.String()); i++ {
+			word = append(word, string(m.String()[i]))
+		}
+		words = append(words, word)
+		m, _ = re.FindNextMatch(m)
+	}
+	if debugEncode {
+		fmt.Println("first 20 words before encoding")
+		for _, word := range words {
+			fmt.Printf("%q\n", word)
+		}
+	}
+	var tokens []int
+	// We convert each word in order, adding its tokenized representation to
+	// tokens.
+	for _, word := range words {
+		for {
+			// Find a pair of tokens in word that we can combine to a longer token
+			// appearing in vocab. BPE requires us to find the earliest token that
+			// was merged in the training process (it has the lowest "order" - ID
+			// in vocab).
+			minIdx := -1
+			minVocabOrder := len(vocab) + 1
+			for i := 0; i < len(word)-1; i++ {
+				if order, ok := vocab[word[i]+word[i+1]]; ok {
+					if order < minVocabOrder {
+						minVocabOrder = order
+						minIdx = i
+					}
+				}
+			}
+			if minIdx >= 0 {
+				// If we find a pair to merge, we merge it in word, leaving the other
+				// tokens intact, and run again...
+				tokenText := word[minIdx] + word[minIdx+1]
+				word = slices.Replace(word, minIdx, minIdx+2, tokenText)
+			} else {
+				// No more pairs found to merge; we're done with this word.
+				break
+			}
+		}
+		// Now we're guaranteed to have the word consist of tokens which appear in
+		// vocab (since we assume vocab contains each single byte as a token too).
+		// Convert the word into a list of token IDs.
+		for _, tokenText := range word {
+			if token, ok := vocab[tokenText]; ok {
+				tokens = append(tokens, token)
+			} else {
+				panic(fmt.Sprintf("token text %q not found in word %q", tokenText, word))
+			}
+		}
+	}
+
+	// Convert the tokens slice to a mat.Dense matrix
+	tokenMatrix := mat.NewDense(1, len(tokens), func() []float64 {
+		floats := make([]float64, len(tokens))
+		for i, t := range tokens {
+			floats[i] = float64(t)
+		}
+		return floats
+	}())
+
+	return tokenMatrix
+}

@@ -1,6 +1,6 @@
 # gpt2
 
-A implementation of the GPT-2 language model in Golang.
+A pure-go implementation of the GPT-2 language model in Golang.
 
 ## Usage
 
